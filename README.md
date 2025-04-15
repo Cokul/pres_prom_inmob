@@ -1,19 +1,11 @@
-# 🎈 Blank app template
+# Flujo de Caja Promoción Inmobiliaria
 
-A simple Streamlit app template for you to modify!
+Herramienta de simulación financiera para promociones inmobiliarias desarrollada con Streamlit.
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://blank-app-template.streamlit.app/)
+Permite:
+- Definir inputs clave del proyecto
+- Generar cronogramas de costes e ingresos
+- Visualizar flujos de caja
+- Exportar a PDF
 
-### How to run it on your own machine
-
-1. Install the requirements
-
-   ```
-   $ pip install -r requirements.txt
-   ```
-
-2. Run the app
-
-   ```
-   $ streamlit run streamlit_app.py
-   ```
+Desarrollado con Python + Streamlit + Pandas + Plotly
