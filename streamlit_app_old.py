@@ -4,7 +4,6 @@ from dateutil.relativedelta import relativedelta
 import pandas as pd
 import plotly.express as px
 import time
-import plotly.graph_objects as go
 
 # Pantalla de bienvenida con logotipo
 if "pantalla_carga" not in st.session_state:
@@ -43,89 +42,15 @@ plazo_obra_meses = st.session_state["plazo_obra_meses"]
 
 with tabs[0]:
     st.header("📋 Datos Generales del Proyecto")
-
-    st.markdown("### 📋 Cargar viviendas desde tabla Excel")
-    fecha_fin_obra = fecha_inicio_obra + relativedelta(months=plazo_obra_meses)
-    fecha_entrega_viviendas = fecha_fin_obra + relativedelta(months=3)
-    
-    with st.expander("📥 Pegar tabla de viviendas desde Excel (Código, Precio, Fecha venta, Fecha escrituración)", expanded=False):
-        texto_pegado = st.text_area("📋 Copia y pega aquí la tabla desde Excel (incluyendo cabecera)", height=200)
-
-        if texto_pegado.strip():
-            try:
-                from io import StringIO
-
-                # Convertimos el texto pegado en un DataFrame
-                data = StringIO(texto_pegado)
-                df_viviendas = pd.read_csv(data, sep="\t")
-
-                # Normalizar nombres de columnas (por si llevan espacios)
-                df_viviendas.columns = [c.strip().lower() for c in df_viviendas.columns]
-
-                # Detectar columnas esperadas (flexible a variaciones)
-                col_codigo = next((c for c in df_viviendas.columns if "código" in c or "codigo" in c or "id" == c), None)
-                col_precio = next((c for c in df_viviendas.columns if "precio" in c), None)
-                col_venta = next((c for c in df_viviendas.columns if "venta" in c), None)
-                col_escritura = next((c for c in df_viviendas.columns if "escritu" in c), None)
-
-                if not col_codigo or not col_precio or not col_venta:
-                    st.error("❌ La tabla debe tener al menos las columnas: Código, Precio y Fecha venta.")
-                else:
-                    # Renombrar para trabajar cómodamente
-                    df_viviendas = df_viviendas.rename(columns={
-                        col_codigo: "Código",
-                        col_precio: "Precio",
-                        col_venta: "Fecha venta",
-                        col_escritura: "Fecha escrituración" if col_escritura else None
-                    })
-
-                    # Convertir fechas al formato correcto (DD/MM/AAAA o similar)
-                    df_viviendas["Fecha venta"] = pd.to_datetime(df_viviendas["Fecha venta"], dayfirst=True, errors="coerce")
-
-                    if "Fecha escrituración" in df_viviendas.columns:
-                        df_viviendas["Fecha escrituración"] = pd.to_datetime(df_viviendas["Fecha escrituración"], dayfirst=True, errors="coerce")
-                    else:
-                        df_viviendas["Fecha escrituración"] = pd.NaT
-
-                    # Asignar fecha por defecto si no hay escrituración
-                    df_viviendas["Fecha escrituración"] = df_viviendas["Fecha escrituración"].fillna(fecha_entrega_viviendas)
-
-                    # Mostrar resumen
-                    st.success(f"✅ {len(df_viviendas)} viviendas cargadas correctamente")
-                    st.dataframe(df_viviendas, use_container_width=True)
-
-                    # Guardar para siguientes pestañas
-                    st.session_state["df_viviendas"] = df_viviendas
-
-                    # Actualizar inputs calculados
-                    st.session_state["num_viviendas"] = len(df_viviendas)
-                    st.session_state["precio_medio_venta"] = df_viviendas["Precio"].mean()
-
-            except Exception as e:
-                st.error(f"❌ Error al procesar la tabla: {e}")
-
-    # Inputs principales con valores que pueden ser sobreescritos desde la tabla pegada
     col_a, col_b, col_c = st.columns(3)
     with col_a:
-        num_viviendas = st.number_input(
-            "Nº de viviendas",
-            min_value=1,
-            value=st.session_state.get("num_viviendas", 20),
-            key="num_viviendas"
-        )
+        num_viviendas = st.number_input("Nº de viviendas", min_value=1, value=20)
         superficie_total = st.number_input("Superficie construida total (m²)", min_value=0.0, value=2000.0)
-        precio_medio_venta = st.number_input(
-            "Precio medio de venta por vivienda (€)",
-            min_value=0.0,
-            value=st.session_state.get("precio_medio_venta", 350000.0),
-            key="precio_medio_venta"
-        )
-
+        precio_medio_venta = st.number_input("Precio medio de venta por vivienda (€)", min_value=0.0, value=350000.0)
     with col_b:
         coste_suelo = st.number_input("Coste del Suelo (€)", min_value=0.0, value=300000.0)
         coste_ejecucion_m2 = st.number_input("Coste ejecución por m²", min_value=0.0, value=1600.0)
         comisiones_venta = st.number_input("Comisiones (% sobre precio sin IVA)", min_value=0.0, max_value=100.0, value=15.0)
-
     with col_c:
         porcentaje_honorarios = st.number_input("% Honorarios técnicos", min_value=0.0, max_value=100.0, value=5.0)
         porcentaje_admin = st.number_input("% Gastos administración", min_value=0.0, max_value=100.0, value=4.0)
@@ -155,6 +80,7 @@ with tabs[1]:
     col_res, col_con, col_apl, col_esc = st.columns(4)
     with col_res:
         reserva_fija = st.number_input("Reserva (€ por vivienda)", min_value=0.0, value=10000.0)
+        st.caption(f"→ Total reservas: {reserva_fija * num_viviendas:,.0f} €")
     with col_con:
         pct_contrato = st.number_input("Contrato (%) sobre precio con IVA", min_value=0.0, max_value=100.0, value=25.0)
     with col_apl:
@@ -168,21 +94,43 @@ with tabs[1]:
     st.caption(f"🏗️ Fin de obra estimado: **{fecha_fin_obra.strftime('%Y-%m-%d')}**")
     st.caption(f"🏁 Entrega prevista: **{fecha_entrega_viviendas.strftime('%Y-%m-%d')}**")
 
-    st.header("🏘️ Cronograma Real de Ingresos y Comisiones")
-    df_viviendas = st.session_state.get("df_viviendas")
+    st.header("🏘️ Planificación de Ventas por Mes")
+    fecha_actual = fecha_inicio_comercializacion
+    fecha_ultima = fecha_entrega_viviendas
+    meses = []
+    while fecha_actual <= fecha_ultima:
+        meses.append(fecha_actual.strftime("%Y-%m"))
+        fecha_actual += relativedelta(months=1)
 
-    if df_viviendas is not None:
-        df_viviendas["Fecha venta"] = pd.to_datetime(df_viviendas["Fecha venta"], dayfirst=True, errors="coerce")
-        df_viviendas["Fecha escrituración"] = pd.to_datetime(df_viviendas["Fecha escrituración"], dayfirst=True, errors="coerce")
+    ventas_por_mes = {}
+    total_previsto = 0
+    st.markdown("### 📆 Indica cuántas viviendas vendes cada mes")
+
+    cols = st.columns(4)
+    for i, mes in enumerate(meses):
+        with cols[i // 6 % 4]:
+            unidades = st.number_input(f"{mes}", min_value=0, max_value=num_viviendas, key=f"ventas_{mes}")
+            ventas_por_mes[mes] = unidades
+            total_previsto += unidades
+
+    if total_previsto > num_viviendas:
+        st.error(f"❌ Has asignado {total_previsto} viviendas, pero el máximo es {num_viviendas}.")
+    else:
+        st.success(f"✅ Unidades asignadas: {total_previsto} de {num_viviendas}")
+
+        st.header("📈 Cronograma Real de Ingresos y Comisiones")
+        precio_con_iva = precio_medio_venta * (1 + iva_venta / 100)
+        resto = precio_con_iva - reserva_fija
+        importe_contrato = precio_con_iva * pct_contrato / 100
+        importe_aplazado = precio_con_iva * pct_aplazado / 100
+        importe_escritura = resto - importe_contrato - importe_aplazado
 
         ingresos_dict = {}
-
-        fecha_min = df_viviendas["Fecha venta"].min().date()
-        fecha_max = df_viviendas["Fecha escrituración"].fillna(pd.Timestamp(fecha_entrega_viviendas)).dt.date.max() + relativedelta(months=3)
-
-        fecha_iter = fecha_min
-        while fecha_iter <= fecha_max:
-            key = fecha_iter.strftime("%Y-%m")
+        # Asegurar que todos los meses posibles estén creados
+        fecha_min = fecha_inicio_comercializacion
+        fecha_max = fecha_entrega_viviendas + relativedelta(months=6)
+        while fecha_min <= fecha_max:
+            key = fecha_min.strftime("%Y-%m")
             ingresos_dict[key] = {
                 "Reserva (€)": 0,
                 "Contrato (€)": 0,
@@ -190,50 +138,41 @@ with tabs[1]:
                 "Escritura (€)": 0,
                 "Comisiones (€)": 0,
             }
-            fecha_iter += relativedelta(months=1)
+            fecha_min += relativedelta(months=1)
 
-        for _, row in df_viviendas.iterrows():
-            precio = row["Precio"]
-            precio_con_iva = precio * (1 + iva_venta / 100)
-            fecha_venta = row["Fecha venta"].date()
-            fecha_escritura = row["Fecha escrituración"].date() if pd.notnull(row["Fecha escrituración"]) else None
-            terminada = fecha_venta >= fecha_entrega_viviendas
+        for mes_venta in ventas_por_mes:
+            unidades = ventas_por_mes[mes_venta]
+            if unidades == 0:
+                continue
+            fecha_reserva = date.fromisoformat(mes_venta + "-01")
+            fecha_contrato = fecha_reserva + relativedelta(months=1)
+            fecha_aplazado = fecha_contrato + relativedelta(months=3)
+            fecha_escritura = fecha_fin_obra + relativedelta(months=3)
 
-            restante = precio_con_iva - reserva_fija
-            importe_contrato = precio_con_iva * pct_contrato / 100
-            importe_aplazado = precio_con_iva * pct_aplazado / 100
-            importe_escritura = restante - importe_contrato - importe_aplazado
+            m_reserva = fecha_reserva.strftime("%Y-%m")
+            m_contrato = fecha_contrato.strftime("%Y-%m")
+            m_aplazado = fecha_aplazado.strftime("%Y-%m")
+            m_escritura = fecha_escritura.strftime("%Y-%m")
 
-            f_reserva = fecha_venta
-            f_contrato = f_reserva + relativedelta(months=1)
-            f_aplazado = f_contrato + relativedelta(months=3)
+            ingresos_dict[m_reserva]["Reserva (€)"] += unidades * reserva_fija
+            ingresos_dict[m_contrato]["Contrato (€)"] += unidades * importe_contrato
+            ingresos_dict[m_aplazado]["Aplazado (€)"] += unidades * importe_aplazado
+            ingresos_dict[m_escritura]["Escritura (€)"] += unidades * importe_escritura
 
-            if fecha_escritura:
-                if not terminada:
-                    f_escritura = fecha_escritura
-                else:
-                    f_escritura = max(fecha_entrega_viviendas, fecha_venta + relativedelta(months=1))
-            else:
-                if not terminada:
-                    f_escritura = fecha_entrega_viviendas
-                else:
-                    f_escritura = max(fecha_entrega_viviendas, fecha_venta + relativedelta(months=1))
+            for mes in ingresos_dict:
+                reserva = ingresos_dict[mes]["Reserva (€)"]
+                contrato = ingresos_dict[mes]["Contrato (€)"]
+                aplazado = ingresos_dict[mes]["Aplazado (€)"]
+                escritura = ingresos_dict[mes]["Escritura (€)"]
 
-            ingresos_dict[f_reserva.strftime("%Y-%m")]["Reserva (€)"] += reserva_fija
-            ingresos_dict[f_contrato.strftime("%Y-%m")]["Contrato (€)"] += importe_contrato
-            ingresos_dict[f_aplazado.strftime("%Y-%m")]["Aplazado (€)"] += importe_aplazado
-            ingresos_dict[f_escritura.strftime("%Y-%m")]["Escritura (€)"] += importe_escritura
+                # Comisión sobre importe sin IVA de venta, con IVA de gasto
+                comision_reserva = reserva / (1 + iva_venta / 100) * (comisiones_venta / 100) * (1 + iva_otros / 100)
+                comision_contrato = contrato / (1 + iva_venta / 100) * (comisiones_venta / 100) * (1 + iva_otros / 100)
+                comision_aplazado = aplazado / (1 + iva_venta / 100) * (comisiones_venta / 100) * (1 + iva_otros / 100)
+                comision_escritura = escritura / (1 + iva_venta / 100) * (comisiones_venta / 100) * (1 + iva_otros / 100)
 
-        for mes in ingresos_dict:
-            total_con_iva = sum([
-                ingresos_dict[mes]["Reserva (€)"],
-                ingresos_dict[mes]["Contrato (€)"],
-                ingresos_dict[mes]["Aplazado (€)"],
-                ingresos_dict[mes]["Escritura (€)"],
-            ])
-            total_sin_iva = total_con_iva / (1 + iva_venta / 100)
-            comision = total_sin_iva * (comisiones_venta / 100) * (1 + iva_otros / 100)
-            ingresos_dict[mes]["Comisiones (€)"] = -comision
+                comision_total = -(comision_reserva + comision_contrato + comision_aplazado + comision_escritura)
+                ingresos_dict[mes]["Comisiones (€)"] = comision_total
 
         resumen = {
             "Mes": [],
@@ -243,7 +182,7 @@ with tabs[1]:
             "Escritura (€)": [],
             "Comisiones (€)": [],
             "Total ingresos (€)": [],
-            "Ingresos netos (€)": [],
+            "Ingresos netos (€)": []
         }
 
         for mes in sorted(ingresos_dict):
@@ -252,8 +191,8 @@ with tabs[1]:
             aplazado = ingresos_dict[mes]["Aplazado (€)"]
             escritura = ingresos_dict[mes]["Escritura (€)"]
             comisiones = ingresos_dict[mes]["Comisiones (€)"]
-            total = reserva + contrato + aplazado + escritura
-            neto = total + comisiones
+            total_ingresos = reserva + contrato + aplazado + escritura
+            ingresos_netos = total_ingresos + comisiones
 
             resumen["Mes"].append(mes)
             resumen["Reserva (€)"].append(reserva)
@@ -261,12 +200,12 @@ with tabs[1]:
             resumen["Aplazado (€)"].append(aplazado)
             resumen["Escritura (€)"].append(escritura)
             resumen["Comisiones (€)"].append(comisiones)
-            resumen["Total ingresos (€)"].append(total)
-            resumen["Ingresos netos (€)"].append(neto)
+            resumen["Total ingresos (€)"].append(total_ingresos)
+            resumen["Ingresos netos (€)"].append(ingresos_netos)
 
         df = pd.DataFrame(resumen)
         df["Acumulado"] = df["Total ingresos (€)"].cumsum()
-        
+
         st.subheader("📋 Tabla mensual de ingresos y comisiones")
         st.dataframe(df.round(2), use_container_width=True)
 
@@ -281,8 +220,6 @@ with tabs[1]:
             df_acumulado[f"{col[:-4]} acumulado (€)"] = df_acumulado[col].cumsum()
         columnas = ["Mes"] + [c for c in df_acumulado.columns if "acumulado" in c]
         st.dataframe(df_acumulado[columnas].round(2), use_container_width=True)
-
-        st.session_state["df"] = df
 
 with tabs[2]:
     st.header("🏗️ Costes de ejecución por capítulo")
@@ -409,10 +346,6 @@ with tabs[2]:
     )
     fig.update_yaxes(autorange="reversed", categoryorder="array", categoryarray=list(df_capitulos["Capítulo"]))
     st.plotly_chart(fig, use_container_width=True)
-
-    # 🔄 Guardar para la pestaña de resumen
-    st.session_state["fig_gantt"] = fig
-    
         # === BLOQUE 6: Cronograma económico mensual ===
     st.markdown("### 📆 Cronograma económico mensual")
 
@@ -457,23 +390,10 @@ with tabs[2]:
 
     st.dataframe(df_cronograma.round(2), use_container_width=True)
 
-    # Gráfico de evolución acumulada del coste de ejecución (sin picos)
-    st.markdown("### 📉 Evolución acumulada del coste de ejecución")
-
-    # Crear columna acumulada
-    df_cronograma_acumulado = df_cronograma.copy()
-    df_cronograma_acumulado["Total acumulado (€)"] = df_cronograma_acumulado["Total mensual (€)"].cumsum()
-
-    # Crear gráfico simple
-    fig_coste = px.line(
-        df_cronograma_acumulado.reset_index(),
-        x="Mes",
-        y="Total acumulado (€)",
-        title="Coste acumulado de ejecución"
-    )
+    # Gráfico de evolución de costes
+    st.markdown("### 📉 Evolución mensual del coste de ejecución")
+    fig_coste = px.bar(df_cronograma.reset_index(), x="Mes", y="Total mensual (€)", title="Coste mensual de ejecución")
     fig_coste.update_layout(xaxis_tickangle=-45)
-
-    # Mostrar
     st.plotly_chart(fig_coste, use_container_width=True)
 
     # === BLOQUE 7: Coste del suelo ===
@@ -512,20 +432,22 @@ with tabs[2]:
     })
 
     # === BLOQUE 10: Costes financieros ===
-    df_viviendas = st.session_state.get("df_viviendas")
-    if df_viviendas is not None:
+    if ventas_por_mes:
         lista_financieros = []
-        for _, row in df_viviendas.iterrows():
-            fecha_venta = row["Fecha venta"]
-            if pd.notnull(fecha_venta):
-                mes_contrato = (fecha_venta + relativedelta(months=1)).strftime("%Y-%m")
+        for mes, unidades in ventas_por_mes.items():
+            if unidades > 0:
+                fecha = date.fromisoformat(mes + "-01") + relativedelta(months=1)
+                mes_contrato = fecha.strftime("%Y-%m")
                 lista_financieros.append({
                     "Mes": mes_contrato,
-                    "Costes financieros (€)": -gastos_financieros
+                    "Costes financieros (€)": -gastos_financieros * unidades
                 })
         if lista_financieros:
             df_financieros = pd.DataFrame(lista_financieros)
-            df_financieros = df_financieros.groupby("Mes", as_index=False).sum()
+            if "Mes" in df_financieros.columns:
+                df_financieros = df_financieros.groupby("Mes", as_index=False).sum()
+            else:
+                df_financieros = pd.DataFrame(columns=["Mes", "Costes financieros (€)"])
         else:
             df_financieros = pd.DataFrame(columns=["Mes", "Costes financieros (€)"])
     else:
@@ -559,45 +481,12 @@ with tabs[2]:
             st.markdown("**💸 Costes financieros**")
             st.dataframe(df_financieros.round(2), use_container_width=True)
 
-    # === BLOQUE 12: Gráfico de otros costes acumulados + barra mensual ===
-    st.markdown("### 📊 Evolución de otros costes")
-
-    # Crear columna acumulada
-    df_total_costes["Total otros costes acumulado (€)"] = df_total_costes["Total otros costes (€)"].cumsum()
-
-    # Crear figura combinada: barra mensual + línea acumulada
-    fig_otros = go.Figure()
-
-    # Barra: costes mensuales
-    fig_otros.add_bar(
-        x=df_total_costes["Mes"],
-        y=df_total_costes["Total otros costes (€)"],
-        name="Coste mensual",
-        marker_color="steelblue"
-    )
-
-    # Línea: costes acumulados
-    fig_otros.add_trace(
-        go.Scatter(
-            x=df_total_costes["Mes"],
-            y=df_total_costes["Total otros costes acumulado (€)"],
-            name="Acumulado",
-            mode="lines+markers",
-            line=dict(color="firebrick", width=3)
-        )
-    )
-
-    # Ajustes estéticos
-    fig_otros.update_layout(
-        title="Otros costes: mensual y acumulado",
-        xaxis_title="Mes",
-        yaxis_title="€",
-        xaxis_tickangle=-45,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
-
-    # Mostrar
+    # === BLOQUE 12: Gráfico de otros costes ===
+    st.markdown("### 📊 Gráfico de otros costes por mes")
+    fig_otros = px.bar(df_total_costes, x="Mes", y="Total otros costes (€)", title="Evolución mensual de otros costes")
+    fig_otros.update_layout(xaxis_tickangle=-45)
     st.plotly_chart(fig_otros, use_container_width=True, key="gantt_costes")
+    st.session_state["df_gantt"] = fig
 
     # Guardamos en sesión por si se usa en resumen
     st.session_state["df_costes_otros"] = df_total_costes
@@ -625,30 +514,12 @@ with tabs[3]:
     df_merge["Ingreso cuenta especial (€)"] = (
         df_merge["Reserva (€)"] +
         df_merge["Contrato (€)"] +
-        df_merge["Aplazado (€)"]
+        df_merge["Aplazado (€)"] 
     )
     df_merge["Gasto cuenta especial (€)"] = df_merge["Coste ejecución (€)"]
     df_merge["Flujo cuenta especial (€)"] = df_merge["Ingreso cuenta especial (€)"] + df_merge["Gasto cuenta especial (€)"]
+    df_merge["Acumulado cuenta especial (€)"] = df_merge["Flujo cuenta especial (€)"].cumsum()
 
-    # Calcular acumulado y déficit mensual de cuenta especial
-    acumulado = []
-    saldo = 0
-    deficits = []
-
-    for flujo in df_merge["Flujo cuenta especial (€)"]:
-        saldo += flujo
-        if saldo < 0:
-            deficits.append(saldo)  # negativo
-            acumulado.append(0)
-            saldo = 0
-        else:
-            deficits.append(0)
-            acumulado.append(saldo)
-
-    df_merge["Acumulado cuenta especial (€)"] = acumulado
-    df_merge["Déficit cuenta especial (€)"] = deficits
-
-    # Mostrar tabla resumen mensual de flujo de caja
     st.subheader("📋 Tabla resumen mensual de flujo de caja")
     columnas_resumen = [
         "Mes",
@@ -660,73 +531,37 @@ with tabs[3]:
         "Ingreso cuenta especial (€)",
         "Gasto cuenta especial (€)",
         "Flujo cuenta especial (€)",
-        "Acumulado cuenta especial (€)",
-        "Déficit cuenta especial (€)"
+        "Acumulado cuenta especial (€)"
     ]
     df_resumen = df_merge[columnas_resumen].copy()
 
+    # Aplicar formato condicional si acumulado cuenta especial es negativo
     def highlight_negativos(val):
-        return "background-color: #fdd;" if isinstance(val, (int, float)) and val < 0 else ""
+        return "background-color: #fdd;" if val < 0 else ""
 
+    # Detectar columnas numéricas
     columnas_numericas = df_resumen.select_dtypes(include=["number"]).columns
 
+    # Mostrar tabla con estilo condicional solo en la columna del acumulado
     st.dataframe(
         df_resumen.style
-            .applymap(highlight_negativos, subset=["Déficit cuenta especial (€)"])
+            .applymap(highlight_negativos, subset=["Acumulado cuenta especial (€)"])
             .format({col: "{:,.2f}" for col in columnas_numericas}),
         use_container_width=True
-    )
+)
 
-    # Gráfico flujo acumulado total
     st.subheader("📈 Gráfico de flujo acumulado total")
     fig_flujo = px.line(df_merge, x="Mes", y="Flujo acumulado (€)", markers=True)
     fig_flujo.update_layout(title="Evolución acumulada del flujo de caja", yaxis_title="€ acumulado")
     st.plotly_chart(fig_flujo, use_container_width=True)
 
-    # Gráfico cuenta especial intervenida
     st.subheader("🏦 Gráfico de cuenta especial intervenida")
     fig_cuenta = px.line(df_merge, x="Mes", y="Acumulado cuenta especial (€)", markers=True)
     fig_cuenta.update_layout(title="Evolución acumulada de la cuenta especial", yaxis_title="€ acumulado")
     st.plotly_chart(fig_cuenta, use_container_width=True)
 
-    # Tabla de necesidades de financiación
-    st.subheader("💸 Necesidades de financiación mensuales")
-
-    columnas_necesidades = [
-        "Mes",
-        "Coste suelo (€)",
-        "Honorarios técnicos (€)",
-        "Gastos administración (€)",
-        "Costes financieros (€)",
-        "Comisiones (€)",
-        "Déficit cuenta especial (€)"
-    ]
-    for col in columnas_necesidades[1:]:
-        if col not in df_merge.columns:
-            df_merge[col] = 0
-
-    df_merge["Total necesidades financiación (€)"] = df_merge[
-        columnas_necesidades[1:]
-    ].sum(axis=1)
-
-    df_necesidades = df_merge[["Mes"] + columnas_necesidades[1:] + ["Total necesidades financiación (€)"]].copy()
-
-    def resaltar_total(row):
-        if row["Total necesidades financiación (€)"] != 0:
-            return ["background-color: #ffe6e6"] * len(row)
-        return [""] * len(row)
-
-    columnas_num_necesidades = df_necesidades.select_dtypes(include=["number"]).columns
-
-    st.dataframe(
-        df_necesidades.style
-            .apply(resaltar_total, axis=1)
-            .format({col: "{:,.2f}" for col in columnas_num_necesidades}),
-        use_container_width=True
-    )
-
+    # Guardar tabla resumen en sesión para mostrarla en la pestaña de resumen
     st.session_state["df_flujo_final"] = df_resumen
-    st.session_state["df_necesidades_financiacion"] = df_necesidades
 
 with tabs[4]:
     st.header("📄 Resumen del Proyecto")
@@ -751,22 +586,11 @@ with tabs[4]:
         st.markdown(f"**% Gastos administración:** {porcentaje_admin:.2f} %")
         st.markdown(f"**Gastos financieros por vivienda:** {gastos_financieros:,.2f} €")
 
-    # === BLOQUE 2: Mostrar ventas por Mes
+    # === BLOQUE 2: Mostrar ventas por mes
     st.markdown("### 🏘️ Ventas por Mes")
-
-    df_viviendas = st.session_state.get("df_viviendas")
-
-    if df_viviendas is not None and not df_viviendas.empty:
-        df_ventas_resumen = (
-            df_viviendas.copy()
-            .assign(Mes=lambda df: df["Fecha venta"].dt.to_period("M").astype(str))
-            .groupby("Mes")
-            .size()
-            .reset_index(name="Viviendas vendidas")
-        )
-        st.dataframe(df_ventas_resumen, use_container_width=True)
-    else:
-        st.info("ℹ️ No hay datos de ventas disponibles.")
+    ventas_filtradas = {k: v for k, v in ventas_por_mes.items() if v > 0}
+    df_ventas_resumen = pd.DataFrame(list(ventas_filtradas.items()), columns=["Mes", "Viviendas vendidas"])
+    st.dataframe(df_ventas_resumen, use_container_width=True)
 
     # === BLOQUE 3: Botón de descarga CSV de inputs
     st.markdown("### 📥 Descargar todos los Inputs en CSV")
@@ -789,8 +613,9 @@ with tabs[4]:
         ["Gastos financieros por vivienda", gastos_financieros],
     ], columns=["Concepto", "Valor"])
 
-    df_ventas_mes = df_ventas_resumen.copy()
-    df_ventas_mes.columns = ["Mes", "Viviendas vendidas"]
+    df_ventas_mes = pd.DataFrame.from_dict(ventas_filtradas, orient="index", columns=["Viviendas vendidas"])
+    df_ventas_mes.index.name = "Mes"
+    df_ventas_mes = df_ventas_mes.reset_index()
 
     df_final_csv = pd.concat([df_inputs_export, pd.DataFrame([["", ""]], columns=["Concepto", "Valor"]), df_ventas_mes.rename(columns={"Mes": "Concepto", "Viviendas vendidas": "Valor"})])
 
@@ -813,7 +638,7 @@ with tabs[4]:
 
         st.dataframe(
             st.session_state["df_flujo_final"].style
-                .applymap(highlight_negativos, subset=["Flujo acumulado (€)"])
+                .applymap(highlight_negativos, subset=["Acumulado cuenta especial (€)"])
                 .format({col: "{:,.2f}" for col in columnas_numericas}),
             use_container_width=True
         )
@@ -823,8 +648,8 @@ with tabs[4]:
     # === BLOQUE 5: Gráfico de Gantt desde la pestaña de Costes ===
     st.markdown("### 📆 Cronograma de ejecución por capítulo")
 
-    if "fig_gantt" in st.session_state:
-        fig_gantt = st.session_state["fig_gantt"]
+    if "df_gantt" in st.session_state:
+        fig_gantt = st.session_state["df_gantt"]
         st.plotly_chart(fig_gantt, use_container_width=True, key="gantt_resumen")
     else:
         st.info("ℹ️ El cronograma de ejecución todavía no se ha generado.")
