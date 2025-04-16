@@ -5,6 +5,8 @@ import pandas as pd
 import plotly.express as px
 import time
 import plotly.graph_objects as go
+import streamlit as st
+from versionado import guardar_version, cargar_version, listar_versiones
 
 # Pantalla de bienvenida con logotipo
 if "pantalla_carga" not in st.session_state:
@@ -27,7 +29,30 @@ st.set_page_config(page_title="Flujo de Caja – Promoción Inmobiliaria", layou
 nombre_proyecto = st.text_input("🏗️ Nombre del Proyecto", value="Promoción Residencial")
 st.title(f"🧮 Modelo de Flujo de Caja – {nombre_proyecto}")
 
+# === Panel lateral auxiliar para guardar/cargar versión ===
+with st.expander("⚙️ Guardar / Cargar versión", expanded=False):
+    nombre_nueva_version = st.text_input("📝 Nombre para nueva versión", key="nombre_nueva_version")
+
+    if st.button("💾 Guardar versión actual"):
+        try:
+            guardar_version(nombre_nueva_version)
+            st.success(f"✅ Versión '{nombre_nueva_version}' guardada correctamente.")
+        except Exception as e:
+            st.error(f"❌ Error al guardar la versión: {e}")
+
+    versiones_disponibles = listar_versiones()
+    seleccion = st.selectbox("📂 Versión guardada:", [""] + versiones_disponibles, key="seleccion_version")
+
+    if seleccion and st.button("🔄 Cargar versión seleccionada"):
+        try:
+            cargar_version(seleccion)
+            st.success(f"✅ Versión '{seleccion}' cargada correctamente.")
+            st.rerun()
+        except Exception as e:
+            st.error(f"❌ Error al cargar la versión: {e}")
+
 tabs = st.tabs(["Inputs Generales", "Ingresos y Comisiones", "Costes", "Flujo de Caja", "Resumen"])
+
 
 # === Inicialización de fechas por defecto ===
 if "fecha_inicio_obra" not in st.session_state:
@@ -79,13 +104,12 @@ with tabs[0]:
                         col_escritura: "Fecha escrituración" if col_escritura else None
                     })
 
-                    # Convertir fechas al formato correcto (DD/MM/AAAA o similar)
-                    df_viviendas["Fecha venta"] = pd.to_datetime(df_viviendas["Fecha venta"], dayfirst=True, errors="coerce")
-
-                    if "Fecha escrituración" in df_viviendas.columns:
-                        df_viviendas["Fecha escrituración"] = pd.to_datetime(df_viviendas["Fecha escrituración"], dayfirst=True, errors="coerce")
-                    else:
-                        df_viviendas["Fecha escrituración"] = pd.NaT
+                    # Conversión robusta de fechas (soporta strings y datetime.date)
+                    for col in ["Fecha venta", "Fecha escrituración"]:
+                        if col in df_viviendas.columns:
+                            df_viviendas[col] = df_viviendas[col].apply(lambda x: pd.to_datetime(str(x), dayfirst=True, errors='coerce') if pd.notna(x) else pd.NaT)
+                        else:
+                            df_viviendas[col] = pd.NaT
 
                     # Asignar fecha por defecto si no hay escrituración
                     df_viviendas["Fecha escrituración"] = df_viviendas["Fecha escrituración"].fillna(fecha_entrega_viviendas)
@@ -607,6 +631,11 @@ with tabs[3]:
     st.header("📊 Resumen General y Flujo de Caja")
 
     # Recuperar ingresos y costes desde sesión
+    if "df" in st.session_state:
+        df_ingresos = st.session_state["df"].copy()
+    else:
+        st.warning("⚠️ Aún no se han definido los ingresos. Por favor, ve primero a la pestaña 'Ingresos y Comisiones'.")
+        st.stop()
     df_ingresos = df.copy()
     df_costes_ejec = df_cronograma.copy()
     df_otros_costes = st.session_state.get("df_costes_otros", pd.DataFrame(columns=["Mes"]))
