@@ -6,6 +6,6 @@ Permite:
 - Definir inputs clave del proyecto
 - Generar cronogramas de costes e ingresos
 - Visualizar flujos de caja
-- Exportar a PDF
+- Descarga de tablas e informes
 
 Desarrollado con Python + Streamlit + Pandas + Plotly
