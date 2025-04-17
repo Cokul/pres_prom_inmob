@@ -1,21 +1,40 @@
+import os
 import streamlit as st
 from datetime import date
 from dateutil.relativedelta import relativedelta
 import pandas as pd
 import plotly.express as px
-import time
 import plotly.graph_objects as go
-import streamlit as st
-from versionado import guardar_version, cargar_version, listar_versiones
+import time
 
-# Pantalla de bienvenida con logotipo
+from versionado import (
+    guardar_version,
+    cargar_version,
+    listar_versiones,
+    duplicar_version,
+    eliminar_version,
+)
+
+# 1) ¡SET_PAGE_CONFIG SIEMPRE PRIMERO!
+st.set_page_config(
+    page_title="Flujo de Caja – Promoción Inmobiliaria",
+    layout="wide",
+)
+
+# 2) Pantalla de bienvenida / carga
 if "pantalla_carga" not in st.session_state:
     st.session_state.pantalla_carga = True
 
 if st.session_state.pantalla_carga:
     st.image("img/icono_automator.png", width=200)
-    st.markdown("<h1 style='text-align: center;'>Promoción Inmobiliaria</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center;'>Cargando aplicación... por favor espera</p>", unsafe_allow_html=True)
+    st.markdown(
+        "<h1 style='text-align: center;'>Promoción Inmobiliaria</h1>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<p style='text-align: center;'>Cargando aplicación... por favor espera</p>",
+        unsafe_allow_html=True,
+    )
     with st.spinner("Inicializando módulos..."):
         time.sleep(2.5)
     if st.button("Entrar"):
@@ -23,33 +42,139 @@ if st.session_state.pantalla_carga:
         st.rerun()
     st.stop()
 
-st.set_page_config(page_title="Flujo de Caja – Promoción Inmobiliaria", layout="wide")
+# 3) Botón universal para “volver al selector” en cualquier momento
+if "selected_project" in st.session_state:
+    if st.button("🔙 Cambiar de proyecto"):
+        del st.session_state.selected_project
+        st.rerun()
 
-# === Nombre del Proyecto ===
-nombre_proyecto = st.text_input("🏗️ Nombre del Proyecto", value="Promoción Residencial")
+# 4) Definición de carpeta base de proyectos/versiones
+CARPETA_BASE = os.path.join(os.getcwd(), "versiones")
+os.makedirs(CARPETA_BASE, exist_ok=True)
+
+# 5) Selector / creación de proyecto
+if "selected_project" not in st.session_state:
+    st.title("📂 Seleccionar o crear proyecto")
+    proyectos = [
+        d
+        for d in os.listdir(CARPETA_BASE)
+        if os.path.isdir(os.path.join(CARPETA_BASE, d))
+    ]
+
+    col1, col2 = st.columns(2)
+    with col1:
+        nuevo = st.text_input("➕ Nuevo proyecto", key="new_proj")
+        if st.button("Crear proyecto", key="btn_new"):
+            if nuevo.strip():
+                os.makedirs(
+                    os.path.join(CARPETA_BASE, nuevo.strip()), exist_ok=True
+                )
+                st.session_state.selected_project = nuevo.strip()
+                st.rerun()
+            else:
+                st.error("Escribe un nombre válido")
+
+    with col2:
+        if proyectos:
+            sel = st.selectbox(
+                "📑 Proyectos existentes", proyectos, key="sel_proj"
+            )
+            if st.button("Cargar proyecto", key="btn_sel"):
+                st.session_state.selected_project = sel
+                st.rerun()
+        else:
+            st.info("No hay proyectos todavía. Crea uno nuevo a la izquierda.")
+
+    st.stop()  # 🚧 Cortamos aquí hasta que el usuario elija/cree un proyecto
+
+# 6) A partir de aquí YA hay un proyecto en sesión
+nombre_proyecto = st.session_state.selected_project
 st.title(f"🧮 Modelo de Flujo de Caja – {nombre_proyecto}")
 
-# === Panel lateral auxiliar para guardar/cargar versión ===
-with st.expander("⚙️ Guardar / Cargar versión", expanded=False):
-    nombre_nueva_version = st.text_input("📝 Nombre para nueva versión", key="nombre_nueva_version")
+# 7) Aquí arrancarían tus pestañas (tabs = st.tabs([...]))
+# ...
+# Por ejemplo, pestaña de gestión de versiones:
 
-    if st.button("💾 Guardar versión actual"):
-        try:
-            guardar_version(nombre_nueva_version)
-            st.success(f"✅ Versión '{nombre_nueva_version}' guardada correctamente.")
-        except Exception as e:
-            st.error(f"❌ Error al guardar la versión: {e}")
+with st.expander("🕒 Versiones del proyecto", expanded=False):
+    # — Guardar nueva versión
+    st.markdown("#### 💾 Guardar nueva versión")
+    nombre_nueva = st.text_input(
+        "Nombre de la nueva versión", key="guardado_nombre"
+    )
 
-    versiones_disponibles = listar_versiones()
-    seleccion = st.selectbox("📂 Versión guardada:", [""] + versiones_disponibles, key="seleccion_version")
+    def _guardar():
+        guardar_version(nombre_nueva.strip(), nombre_proyecto)
+        st.session_state["msg_version"] = (
+            f"✅ Versión '{nombre_nueva.strip()}' guardada"
+        )
 
-    if seleccion and st.button("🔄 Cargar versión seleccionada"):
-        try:
-            cargar_version(seleccion)
-            st.success(f"✅ Versión '{seleccion}' cargada correctamente.")
-            st.rerun()
-        except Exception as e:
-            st.error(f"❌ Error al cargar la versión: {e}")
+    st.button(
+        "Guardar versión",
+        on_click=_guardar,
+        disabled=(not nombre_nueva.strip()),
+        key="btn_guardar",
+    )
+    if st.session_state.get("msg_version"):
+        st.success(st.session_state.pop("msg_version"))
+
+    # — Histórico y acciones
+    versiones = listar_versiones(nombre_proyecto)
+    if not versiones:
+        st.info("No hay versiones guardadas todavía.")
+    else:
+        opciones = [v["nombre"] for v in versiones]
+        fechas = [v["fecha"].strftime("%Y-%m-%d %H:%M") for v in versiones]
+        display = [f"{n} ({f})" for n, f in zip(opciones, fechas)]
+
+        seleccion = st.selectbox(
+            "Selecciona una versión",
+            options=opciones,
+            format_func=lambda x: display[opciones.index(x)],
+            key="sel_version",
+        )
+
+        c1, c2, c3 = st.columns(3)
+
+        # → Cargar
+        def _cargar():
+            cargar_version(seleccion, nombre_proyecto)
+            st.session_state["msg_version"] = "🔄 Versión cargada"
+
+        with c1:
+            st.button("🔄 Cargar", on_click=_cargar, key="btn_cargar")
+
+        # → Duplicar
+        nuevo_dup = st.text_input("Duplicar como:", key="inp_dup")
+
+        def _duplicar():
+            duplicar_version(seleccion, nuevo_dup.strip(), nombre_proyecto)
+            st.session_state["msg_version"] = (
+                f"📄 Versión duplicada como '{nuevo_dup.strip()}'"
+            )
+
+        with c2:
+            st.button(
+                "📄 Duplicar",
+                on_click=_duplicar,
+                disabled=(not nuevo_dup.strip()),
+                key="btn_dup",
+            )
+
+        # → Eliminar
+        def _eliminar():
+            eliminar_version(seleccion, nombre_proyecto)
+            st.session_state["msg_version"] = (
+                f"🗑️ Versión '{seleccion}' eliminada"
+            )
+
+        with c3:
+            st.button("🗑️ Eliminar", on_click=_eliminar, key="btn_del")
+
+        # Mensaje final (una sola vez)
+        if st.session_state.get("msg_version"):
+            st.info(st.session_state.pop("msg_version"))
+
+# 8) Aquí continúa el resto de tu aplicación: pestañas con Inputs, cálculos, gráficas…
 
 tabs = st.tabs(["Inputs Generales", "Ingresos y Comisiones", "Costes", "Flujo de Caja", "Resumen"])
 
@@ -627,6 +752,7 @@ with tabs[2]:
     st.session_state["df_costes_otros"] = df_total_costes
 
 
+
 with tabs[3]:
     st.header("📊 Resumen General y Flujo de Caja")
 
@@ -636,6 +762,7 @@ with tabs[3]:
     else:
         st.warning("⚠️ Aún no se han definido los ingresos. Por favor, ve primero a la pestaña 'Ingresos y Comisiones'.")
         st.stop()
+
     df_ingresos = df.copy()
     df_costes_ejec = df_cronograma.copy()
     df_otros_costes = st.session_state.get("df_costes_otros", pd.DataFrame(columns=["Mes"]))
@@ -667,7 +794,7 @@ with tabs[3]:
     for flujo in df_merge["Flujo cuenta especial (€)"]:
         saldo += flujo
         if saldo < 0:
-            deficits.append(saldo)  # negativo
+            deficits.append(saldo)
             acumulado.append(0)
             saldo = 0
         else:
@@ -720,6 +847,20 @@ with tabs[3]:
 
     # Tabla de necesidades de financiación
     st.subheader("💸 Necesidades de financiación mensuales")
+    st.markdown("""
+    Las necesidades de financiación mensuales recogen todos los costes que deben cubrirse con recursos propios
+    antes de la escrituración de las viviendas. Incluyen: el coste del suelo, honorarios técnicos, gastos de administración,
+    costes financieros y **comisiones pre-escritura** (es decir, las derivadas de la reserva, contrato y aplazado),
+    así como cualquier déficit en la cuenta especial intervenida.
+    """)
+
+    df_merge["Comisiones pre-escritura (€)"] = 0
+    if "Comisiones (€)" in df_merge.columns:
+        # Estimar comisiones pre-escritura proporcionalmente según los ingresos
+        ingresos_total = df_merge[["Reserva (€)", "Contrato (€)", "Aplazado (€)", "Escritura (€)"]].sum(axis=1)
+        ingresos_pre = df_merge[["Reserva (€)", "Contrato (€)", "Aplazado (€)"]].sum(axis=1)
+        proporcion_pre = ingresos_pre / ingresos_total.replace(0, 1)
+        df_merge["Comisiones pre-escritura (€)"] = df_merge["Comisiones (€)"] * proporcion_pre
 
     columnas_necesidades = [
         "Mes",
@@ -727,7 +868,7 @@ with tabs[3]:
         "Honorarios técnicos (€)",
         "Gastos administración (€)",
         "Costes financieros (€)",
-        "Comisiones (€)",
+        "Comisiones pre-escritura (€)",
         "Déficit cuenta especial (€)"
     ]
     for col in columnas_necesidades[1:]:
@@ -756,7 +897,6 @@ with tabs[3]:
 
     st.session_state["df_flujo_final"] = df_resumen
     st.session_state["df_necesidades_financiacion"] = df_necesidades
-
 with tabs[4]:
     st.header("📄 Resumen del Proyecto")
 
@@ -857,3 +997,54 @@ with tabs[4]:
         st.plotly_chart(fig_gantt, use_container_width=True, key="gantt_resumen")
     else:
         st.info("ℹ️ El cronograma de ejecución todavía no se ha generado.")
+
+    
+    # === BLOQUE 6: Cuenta de Resultados de la Promoción (sin IVA)s ===
+    st.markdown("### 🧾 Cuenta de Resultados de la Promoción (sin IVA)")
+
+    # Cálculos base
+    ingresos_por_venta = precio_medio_venta * num_viviendas
+    total_comisiones = ingresos_por_venta * comisiones_venta / 100
+    ingresos_netos = ingresos_por_venta - total_comisiones
+
+    coste_ejecucion_total = coste_ejecucion_m2 * superficie_total
+    coste_honorarios = coste_ejecucion_total * porcentaje_honorarios / 100
+    coste_admin = coste_ejecucion_total * porcentaje_admin / 100
+    coste_financiero = gastos_financieros * num_viviendas
+    costes_no_ejecutivos = coste_honorarios + coste_admin + coste_financiero
+
+    total_costes = coste_suelo + coste_ejecucion_total + costes_no_ejecutivos
+    margen = ingresos_netos - total_costes
+
+    margen_vivienda = margen / num_viviendas if num_viviendas else 0
+    margen_m2 = margen / superficie_total if superficie_total else 0
+
+    cuenta_resultados = {
+        "Concepto": [
+            "Ingresos por venta",
+            "(-) Comisiones",
+            "= Ingresos Netos",
+            "Compra de terrenos",
+            "Costes de ejecución",
+            "Costes no ejecutivos",
+            "= Total Costes",
+            "= Margen",
+            "Margen por vivienda",
+            "Margen por m² construido"
+        ],
+        "Importe (€)": [
+            ingresos_por_venta,
+            -total_comisiones,
+            ingresos_netos,
+            -coste_suelo,
+            -coste_ejecucion_total,
+            -costes_no_ejecutivos,
+            -total_costes,
+            margen,
+            margen_vivienda,
+            margen_m2
+        ]
+    }
+
+    df_resultados = pd.DataFrame(cuenta_resultados)
+    st.dataframe(df_resultados.style.format({"Importe (€)": "{:,.2f}"}), use_container_width=True)
